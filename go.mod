@@ -1,4 +1,4 @@
-module fulltext
+module github.com/neurlang/fulltext
 
 go 1.24.7
 
