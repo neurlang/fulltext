@@ -3,6 +3,7 @@ package fulltext
 
 import quaternary "github.com/neurlang/quaternary/v1"
 import "fmt"
+import "reflect"
 
 type BagOfWords = map[string]struct{}
 
@@ -34,7 +35,6 @@ type NewOpts struct {
 var ErrNonuniform = fmt.Errorf("nonuniform_key_size")
 var ErrNilGetter = fmt.Errorf("nil_getter")
 
-
 // Append is O(1) but NOT a thread safe operation. Use external synchronization to protect mutation of the index.
 func (i *Index) Append(j *Index) *Index {
 	i.private = append(i.private, j.private...)
@@ -43,9 +43,27 @@ func (i *Index) Append(j *Index) *Index {
 
 // New creates new full text index based on primary keys with common size of every string primary key.
 // Getter iterates the storage based on primary keys and returns the words in the row with primaryKey. Opts can be nil.
-func New(opts *NewOpts, primaryKeys BagOfWords, getter func(primaryKey string) BagOfWords) (i *Index, err error) {
+func New[V struct{} | BagOfWords | []string](opts *NewOpts, data map[string]V, getter func(primaryKey string) BagOfWords) (i *Index, err error) {
 	if getter == nil {
-		return nil, ErrNilGetter
+		vType := reflect.TypeOf(data[""])
+		if vType.Kind() == reflect.Struct {
+			return nil, ErrNilGetter
+		} else if vType.Kind() == reflect.Slice {
+			dataClone := data
+			getter = func(pk string) BagOfWords {
+				var slice = (interface{}(dataClone[pk])).([]string)
+				var bag = make(BagOfWords, len(slice))
+				for _, v := range slice {
+					bag[v] = struct{}{}
+				}
+				return bag
+			}
+		} else {
+			dataClone := data
+			getter = func(pk string) BagOfWords {
+				return (interface{}(dataClone[pk])).(BagOfWords)
+			}
+		}
 	}
 	if opts == nil {
 		// defaults
@@ -55,7 +73,7 @@ func New(opts *NewOpts, primaryKeys BagOfWords, getter func(primaryKey string) B
 		}
 	}
 	i = new(Index)
-	i.private = make([]index, (len(primaryKeys)>>opts.BucketingExponent)+1, (len(primaryKeys)>>opts.BucketingExponent)+1)
+	i.private = make([]index, (len(data)>>opts.BucketingExponent)+1, (len(data)>>opts.BucketingExponent)+1)
 	for current := range i.private {
 		i.private[current].Version = 1
 	}
@@ -64,7 +82,7 @@ func New(opts *NewOpts, primaryKeys BagOfWords, getter func(primaryKey string) B
 	var current int
 	countBag := make(map[[3]byte]uint64)
 	initialBag := make(map[string]uint64)
-	for k := range primaryKeys {
+	for k := range data {
 		if keys_len == 0 {
 			keys_len = len(k)
 		} else if keys_len != len(k) {
@@ -118,8 +136,8 @@ func New(opts *NewOpts, primaryKeys BagOfWords, getter func(primaryKey string) B
 		//println("countBag:", string(k[:])+"0", v)
 		initialBag[string(k[:])+"0"] = v
 	}
+	data = nil
 	countBag = nil
-	primaryKeys = nil
 	last := current
 	//println("flush", last, "last")
 	i.private[last].Rows = uint64(len(ikeys))
