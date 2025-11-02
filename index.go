@@ -34,6 +34,13 @@ type NewOpts struct {
 var ErrNonuniform = fmt.Errorf("nonuniform_key_size")
 var ErrNilGetter = fmt.Errorf("nil_getter")
 
+
+// Append is O(1) but NOT a thread safe operation. Use external synchronization to protect mutation of the index.
+func (i *Index) Append(j *Index) *Index {
+	i.private = append(i.private, j.private...)
+	return i
+}
+
 // New creates new full text index based on primary keys with common size of every string primary key.
 // Getter iterates the storage based on primary keys and returns the words in the row with primaryKey. Opts can be nil.
 func New(opts *NewOpts, primaryKeys BagOfWords, getter func(primaryKey string) BagOfWords) (i *Index, err error) {
