@@ -175,33 +175,39 @@ func New[V struct{} | BagOfWords | []string](opts *NewOpts, data map[string]V, g
 	if !more {
 		return
 	}
+	wg = sync.WaitGroup{}
 	//println("Length", len(i.private))
 	for curr := range i.private {
 		//println("Maxword", i.private[curr].Maxword)
 		for q := 0; q+3 < i.private[curr].Maxword; q++ {
-			countBag := make(map[[3]byte]uint64)
-			initialBag := make(map[string]uint64)
-			for j := uint64(1); j <= i.private[curr].Rows; j++ {
-				var k = string(quaternary.Get(i.private[curr].Pk, i.private[curr].Pkbits, j))
-				bag := getter(k)
-				for word := range bag {
-					//println("key:",k, word)
-					if len(word) <= 3+q {
-						continue
+			wg.Add(1)
+			go func(curr, q int) {
+				countBag := make(map[[3]byte]uint64)
+				initialBag := make(map[string]uint64)
+				for j := uint64(1); j <= i.private[curr].Rows; j++ {
+					var k = string(quaternary.Get(i.private[curr].Pk, i.private[curr].Pkbits, j))
+					bag := getter(k)
+					for word := range bag {
+						//println("key:",k, word)
+						if len(word) <= 3+q {
+							continue
+						}
+						wrd := [3]byte{word[1+q], word[2+q], word[3+q]}
+						countBag[wrd]++
+						cnt := countBag[wrd]
+						initialBag[word[1+q:4+q]+fmt.Sprint(cnt)] = j
 					}
-					wrd := [3]byte{word[1+q], word[2+q], word[3+q]}
-					countBag[wrd]++
-					cnt := countBag[wrd]
-					initialBag[word[1+q:4+q]+fmt.Sprint(cnt)] = j
 				}
-			}
-			for k, v := range countBag {
-				//println("countBag:", string(k[:])+"0", v)
-				initialBag[string(k[:])+"0"] = v
-			}
-			i.private[curr].Buckets[1+q] = quaternary.New(initialBag, i.private[curr].Logrows, opts.FalsePositiveFunctions)
+				for k, v := range countBag {
+					//println("countBag:", string(k[:])+"0", v)
+					initialBag[string(k[:])+"0"] = v
+				}
+				i.private[curr].Buckets[1+q] = quaternary.New(initialBag, i.private[curr].Logrows, opts.FalsePositiveFunctions)
+				wg.Done()
+			}(curr, q)
 		}
 	}
+	wg.Wait()
 	return
 }
 
