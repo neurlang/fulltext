@@ -17,7 +17,7 @@ func (idx *Index) Deserialize(data []byte) error {
 		return err
 	}
 	for _, p := range idx.private {
-		if p.Version != 1 {
+		if p.Version == 0 || p.Version > 2 {
 			return ErrFormatVersionMismatch
 		}
 	}

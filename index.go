@@ -12,10 +12,12 @@ type index struct {
 	Version byte     `json:"version"`
 	Pk      []byte   `json:"pk"`
 	Buckets [][]byte `json:"buckets"`
+	Counts  [][]byte `json:"counts"`
 	Pkbits  uint64   `json:"pkbits"`
 	Rows    uint64   `json:"rows"`
 	Logrows byte     `json:"logrows"`
 	Maxword int      `json:"maxword"`
+	MinWord byte     `json:"minword"`
 }
 
 type Index struct {
@@ -31,6 +33,9 @@ type NewOpts struct {
 	// BucketingExponent affects speed for large-scale indexes.
 	// Higher values are slower to generate the index. Lower values are slower to search.
 	BucketingExponent byte
+
+	// Shortest length of word that can be searched
+	MinWordLength byte
 }
 
 var ErrNonuniform = fmt.Errorf("nonuniform_key_size")
@@ -71,18 +76,20 @@ func New[V struct{} | BagOfWords | []string](opts *NewOpts, data map[string]V, g
 		opts = &NewOpts{
 			FalsePositiveFunctions: 10,
 			BucketingExponent:      13,
+			MinWordLength:          3,
 		}
 	}
 	var wg sync.WaitGroup
 	i = new(Index)
 	i.private = make([]index, (len(data)>>opts.BucketingExponent)+1, (len(data)>>opts.BucketingExponent)+1)
 	for current := range i.private {
-		i.private[current].Version = 1
+		i.private[current].Version = 2
+		i.private[current].MinWord = opts.MinWordLength
 	}
 	var ikeys = make(map[int]string, 1<<opts.BucketingExponent)
 	var keys_len int
 	var current int
-	countBag := make(map[[3]byte]uint64)
+	countBag := make(map[string]uint64)
 	initialBag := make(map[string]uint64)
 	for k := range data {
 		if keys_len == 0 {
@@ -97,25 +104,22 @@ func New[V struct{} | BagOfWords | []string](opts *NewOpts, data map[string]V, g
 			if len(word) > i.private[current].Maxword {
 				i.private[current].Maxword = len(word)
 			}
-			if len(word) < 3 {
+			if len(word) < int(opts.MinWordLength) {
 				continue
 			}
-			for len(word)-3 >= len(i.private[current].Buckets) {
+			for len(word)-int(opts.MinWordLength) >= len(i.private[current].Buckets) {
 				i.private[current].Buckets = append(i.private[current].Buckets, nil)
+				i.private[current].Counts = append(i.private[current].Counts, nil)
 			}
-			wrd := [3]byte{word[0], word[1], word[2]}
+			wrd := word[0:int(opts.MinWordLength)]
 			countBag[wrd]++
 			cnt := countBag[wrd]
-			initialBag[word[:3]+fmt.Sprint(cnt)] = uint64(size)
+			initialBag[wrd+fmt.Sprint(cnt)] = uint64(size)
 		}
 		if (size >> opts.BucketingExponent) != 0 {
 			wg.Add(1)
-			go func(ikeys map[int]string, countBag map[[3]byte]uint64, initialBag map[string]uint64, current int) {
+			go func(ikeys map[int]string, countBag map[string]uint64, initialBag map[string]uint64, current int) {
 				//println("flush", current)
-				for k, v := range countBag {
-					//println("countBag:", string(k[:])+"0", v)
-					initialBag[string(k[:])+"0"] = v
-				}
 				i.private[current].Rows = uint64(len(ikeys))
 				for j := i.private[current].Rows; j > 0; j >>= 1 {
 					i.private[current].Logrows++
@@ -125,25 +129,21 @@ func New[V struct{} | BagOfWords | []string](opts *NewOpts, data map[string]V, g
 				}
 				//println(i.private[current].Pkbits)
 				if i.private[current].Pkbits <= 255 {
-					i.private[current].Pk = quaternary.Make(ikeys, byte(i.private[current].Pkbits))
+					i.private[current].Pk = quaternary.New(ikeys, byte(i.private[current].Pkbits), 0)
 				} else {
-					i.private[current].Pk = quaternary.Make(ikeys, 0)
+					i.private[current].Pk = quaternary.New(ikeys, 0, 0)
 				}
-				i.private[current].Buckets[0] = quaternary.New(initialBag, i.private[current].Logrows, opts.FalsePositiveFunctions)
+				i.private[current].Buckets[0] = quaternary.New(initialBag, i.private[current].Logrows, 0)
+				i.private[current].Counts[0] = quaternary.New(countBag, i.private[current].Logrows, opts.FalsePositiveFunctions)
 				wg.Done()
 			}(ikeys, countBag, initialBag, current)
 			ikeys = make(map[int]string, 1<<opts.BucketingExponent)
-			countBag = make(map[[3]byte]uint64)
+			countBag = make(map[string]uint64)
 			initialBag = make(map[string]uint64)
 			current++
 		}
 	}
-	for k, v := range countBag {
-		//println("countBag:", string(k[:])+"0", v)
-		initialBag[string(k[:])+"0"] = v
-	}
 	data = nil
-	countBag = nil
 	last := current
 	//println("flush", last, "last")
 	i.private[last].Rows = uint64(len(ikeys))
@@ -154,15 +154,17 @@ func New[V struct{} | BagOfWords | []string](opts *NewOpts, data map[string]V, g
 		i.private[last].Pkbits = uint64(len(ikeys[1])) * 8
 	}
 	if i.private[last].Pkbits <= 255 {
-		i.private[last].Pk = quaternary.Make(ikeys, byte(i.private[last].Pkbits))
+		i.private[last].Pk = quaternary.New(ikeys, byte(i.private[last].Pkbits), 0)
 	} else {
-		i.private[last].Pk = quaternary.Make(ikeys, 0)
+		i.private[last].Pk = quaternary.New(ikeys, 0, 0)
 	}
 	ikeys = nil
 	if len(i.private[last].Buckets) > 0 {
-		i.private[last].Buckets[0] = quaternary.New(initialBag, i.private[last].Logrows, opts.FalsePositiveFunctions)
+		i.private[last].Buckets[0] = quaternary.New(initialBag, i.private[last].Logrows, 0)
+		i.private[last].Counts[0] = quaternary.New(countBag, i.private[last].Logrows, opts.FalsePositiveFunctions)
 	}
 	i.private = i.private[:last+1]
+	countBag = nil
 	initialBag = nil
 	wg.Wait()
 	var more bool
@@ -179,30 +181,27 @@ func New[V struct{} | BagOfWords | []string](opts *NewOpts, data map[string]V, g
 	//println("Length", len(i.private))
 	for curr := range i.private {
 		//println("Maxword", i.private[curr].Maxword)
-		for q := 0; q+3 < i.private[curr].Maxword; q++ {
+		for q := 0; q+int(opts.MinWordLength) < i.private[curr].Maxword; q++ {
 			wg.Add(1)
 			go func(curr, q int) {
-				countBag := make(map[[3]byte]uint64)
+				countBag := make(map[string]uint64)
 				initialBag := make(map[string]uint64)
 				for j := uint64(1); j <= i.private[curr].Rows; j++ {
 					var k = string(quaternary.Get(i.private[curr].Pk, i.private[curr].Pkbits, j))
 					bag := getter(k)
 					for word := range bag {
 						//println("key:",k, word)
-						if len(word) <= 3+q {
+						if len(word) <= int(opts.MinWordLength)+q {
 							continue
 						}
-						wrd := [3]byte{word[1+q], word[2+q], word[3+q]}
+						wrd := word[1+q : 1+int(opts.MinWordLength)+q]
 						countBag[wrd]++
 						cnt := countBag[wrd]
-						initialBag[word[1+q:4+q]+fmt.Sprint(cnt)] = j
+						initialBag[wrd+fmt.Sprint(cnt)] = j
 					}
 				}
-				for k, v := range countBag {
-					//println("countBag:", string(k[:])+"0", v)
-					initialBag[string(k[:])+"0"] = v
-				}
-				i.private[curr].Buckets[1+q] = quaternary.New(initialBag, i.private[curr].Logrows, opts.FalsePositiveFunctions)
+				i.private[curr].Buckets[1+q] = quaternary.New(initialBag, i.private[curr].Logrows, 0)
+				i.private[curr].Counts[1+q] = quaternary.New(countBag, i.private[curr].Logrows, opts.FalsePositiveFunctions)
 				wg.Done()
 			}(curr, q)
 		}
@@ -211,15 +210,21 @@ func New[V struct{} | BagOfWords | []string](opts *NewOpts, data map[string]V, g
 	return
 }
 
-// Lookup iterates the fulltext search index based on a specific word with length of 3 characters or more.
+// Lookup iterates the fulltext search index based on a specific word with length of opts.MinWordLength characters or more.
 // Exact finds exact word matches (faster). Dedup hits each primary key exactly once (slower, but can be worth it if db is slow).
 // Iterator can (in rare cases) have false positives.
 func (i *Index) Lookup(word string, exact, dedup bool) func(yield func(primaryKey string) bool) {
 	return func(yield func(string) bool) {
-		if len(word) < 3 {
-			return
-		}
 		for current := range i.private {
+			var minWord int
+			if i.private[current].Version <= 1 {
+				minWord = 3
+			} else {
+				minWord = int(i.private[current].MinWord)
+			}
+			if len(word) < minWord {
+				continue
+			}
 			if i.private[current].Rows == 0 {
 				continue
 			}
@@ -227,22 +232,30 @@ func (i *Index) Lookup(word string, exact, dedup bool) func(yield func(primaryKe
 			if dedup {
 				uniq = make(map[uint64]int)
 			}
-			for t := len(word) - 3; t >= 0; t-- {
-				term := [3]byte{word[t], word[t+1], word[t+2]}
+			for t := len(word) - minWord; t >= 0; t-- {
+				term := word[t : t+minWord]
 				var bucket int
 				if exact {
-					bucket = len(word) - 3
+					bucket = len(word) - minWord
 				} else {
-					bucket = i.private[current].Maxword - 3
+					bucket = i.private[current].Maxword - minWord
 				}
 				for ; bucket >= 0; bucket-- {
 					if bucket >= len(i.private[current].Buckets) {
 						continue
 					}
-					if len(i.private[current].Buckets[bucket]) < 2 {
-						continue
+					var count uint64
+					if i.private[current].Version <= 1 {
+						if len(i.private[current].Buckets[bucket]) < 2 {
+							continue
+						}
+						count = quaternary.GetNum(i.private[current].Buckets[bucket], uint64(i.private[current].Logrows), term+"0")
+					} else {
+						if len(i.private[current].Counts[bucket]) < 2 {
+							continue
+						}
+						count = quaternary.GetNum(i.private[current].Counts[bucket], uint64(i.private[current].Logrows), term)
 					}
-					count := quaternary.GetNum(i.private[current].Buckets[bucket], uint64(i.private[current].Logrows), string(term[:])+"0")
 					//println("Lookup:", string(term[:]) + "0", count)
 					if count == 0 {
 						continue
@@ -252,7 +265,7 @@ func (i *Index) Lookup(word string, exact, dedup bool) func(yield func(primaryKe
 					}
 					//println(word, count, "results")
 					for c := uint64(1); c <= count; c++ {
-						pos := quaternary.GetNum(i.private[current].Buckets[bucket], uint64(i.private[current].Logrows), string(term[:])+fmt.Sprint(c))
+						pos := quaternary.GetNum(i.private[current].Buckets[bucket], uint64(i.private[current].Logrows), term+fmt.Sprint(c))
 						//println("Lookup:", string(term[:]) + fmt.Sprint(c), pos)
 						if pos == 0 {
 							//println("pos == 0")
@@ -280,7 +293,7 @@ func (i *Index) Lookup(word string, exact, dedup bool) func(yield func(primaryKe
 			}
 			if dedup {
 				for pos, v := range uniq {
-					if v+3 >= len(word) {
+					if v+minWord >= len(word) {
 						var k = string(quaternary.Get(i.private[current].Pk, i.private[current].Pkbits, pos))
 						//println(string(term[:]), k, "yielded")
 						if !yield(k) {
