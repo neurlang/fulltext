@@ -10,6 +10,13 @@ It’s optimized for compact storage, fast lookups, and tunable tradeoffs betwee
 The `fulltext` package provides a probabilistic full-text indexing mechanism over a set of primary keys and their corresponding word sets (“bag of words”).
 It supports serialization/deserialization to JSON for persistence and efficient in-memory lookup of records by words or prefixes.
 
+### 🧭 Comparison with `github.com/andreaskoch/fulltext` and its derivatives
+
+* **Similar size:** This does have comparable fulltext index size
+* **More features:** This package also allows prefix searches (such as in autocomplete) or subword searches, means more results for the user.
+* **Simpler:** Light API with generic constructor
+* **The price:** At the cost of somewhat slower indexing/searching
+
 ---
 
 ## ✨ Features
@@ -106,7 +113,7 @@ iter := idx.Lookup("golang", true, true)
 
 Parameters:
 
-* `exact` — if `true`, only exact word matches are considered. If `false`, a subword matches for the word may be found.
+* `exact` — if `true`, only exact word/prefix matches are considered. If `false`, a subword matches for the word may be found.
 * `dedup` — if `true`, ensures each primary key is only yielded once (slower, but useful if your backing store is expensive to query).
 
 
