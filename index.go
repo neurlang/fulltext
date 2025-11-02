@@ -36,6 +36,9 @@ type NewOpts struct {
 
 	// Shortest length of word that can be searched
 	MinWordLength byte
+
+	// Sync calls getter from one thread only
+	Sync bool
 }
 
 var ErrNonuniform = fmt.Errorf("nonuniform_key_size")
@@ -50,6 +53,16 @@ func (i *Index) Append(j *Index) *Index {
 // New creates new full text index based on primary keys with common size of every string primary key.
 // Getter iterates the storage based on primary keys and returns the words in the row with primaryKey. Opts can be nil.
 func New[V struct{} | BagOfWords | []string](opts *NewOpts, data map[string]V, getter func(primaryKey string) BagOfWords) (i *Index, err error) {
+	var syncGetter = getter
+	if opts == nil {
+		// defaults
+		opts = &NewOpts{
+			FalsePositiveFunctions: 10,
+			BucketingExponent:      13,
+			MinWordLength:          3,
+			Sync:                   true,
+		}
+	}
 	if getter == nil {
 		vType := reflect.TypeOf(data[""])
 		if vType.Kind() == reflect.Struct {
@@ -64,19 +77,22 @@ func New[V struct{} | BagOfWords | []string](opts *NewOpts, data map[string]V, g
 				}
 				return bag
 			}
+			syncGetter = getter // can be async always, we own the data
 		} else {
 			dataClone := data
 			getter = func(pk string) BagOfWords {
 				return (interface{}(dataClone[pk])).(BagOfWords)
 			}
+			syncGetter = getter // can be async always, we own the data
 		}
-	}
-	if opts == nil {
-		// defaults
-		opts = &NewOpts{
-			FalsePositiveFunctions: 10,
-			BucketingExponent:      13,
-			MinWordLength:          3,
+	} else if opts.Sync {
+		// must be sync (from one thread) because we are potentially calling into external resource
+		var mut sync.Mutex
+		syncGetter = func(pk string) (ret BagOfWords) {
+			mut.Lock()
+			ret = getter(pk)
+			mut.Unlock()
+			return
 		}
 	}
 	var wg sync.WaitGroup
@@ -99,7 +115,7 @@ func New[V struct{} | BagOfWords | []string](opts *NewOpts, data map[string]V, g
 		}
 		size := len(ikeys) + 1
 		ikeys[size] = k
-		bag := getter(k)
+		bag := getter(k) // can be async here
 		for word := range bag {
 			if len(word) > i.private[current].Maxword {
 				i.private[current].Maxword = len(word)
@@ -188,7 +204,7 @@ func New[V struct{} | BagOfWords | []string](opts *NewOpts, data map[string]V, g
 				initialBag := make(map[string]uint64)
 				for j := uint64(1); j <= i.private[curr].Rows; j++ {
 					var k = string(quaternary.Get(i.private[curr].Pk, i.private[curr].Pkbits, j))
-					bag := getter(k)
+					bag := syncGetter(k) // must be sync, firing from routines
 					for word := range bag {
 						//println("key:",k, word)
 						if len(word) <= int(opts.MinWordLength)+q {
