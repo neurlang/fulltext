@@ -181,7 +181,7 @@ type NewOpts struct {
 
 ## 🧪 Notes
 
-* Lookup supports words **with length ≥ 3**.
+* Lookup supports words **with length ≥ 3** (configurable using `MinWordLength`).
 * Iteration may produce **false positives** depending on `FalsePositiveFunctions`.
 * Deduplication mode can reduce redundant hits but adds overhead.
 
