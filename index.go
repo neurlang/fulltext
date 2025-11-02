@@ -60,11 +60,11 @@ func New[V struct{} | BagOfWords | []string](opts *NewOpts, data map[string]V, g
 	if opts == nil {
 		// defaults
 		opts = &NewOpts{
-			FalsePositiveFunctions: 10,
+			FalsePositiveFunctions: 2,
 			BucketingExponent:      13,
 			MinWordLength:          3,
 			Sync:                   true,
-			MinShards:              4,
+			MinShards:              3,
 		}
 	}
 	for opts.BucketingExponent > 0 && (len(data)>>opts.BucketingExponent) < int(opts.MinShards) {
