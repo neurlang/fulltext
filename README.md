@@ -14,11 +14,11 @@ It supports serialization/deserialization to JSON for persistence and efficient 
 
 ## ✨ Features
 
-* 🔍 **Fast word-based lookup** with optional exact matching
+* 🔍 **Fast subword-based lookup** with optional exact word matching
 * 🧮 **Compact index** representation using probabilistic filters
 * 🧱 **Serializable** — easy to store and reload from JSON
 * ⚙️ **Configurable false positive rate** for memory/speed trade-offs
-* 🧩 **Deduplication option** for slow or expensive data stores
+* 🧩 **Results deduplication option** for slow or expensive data stores
 
 ---
 
@@ -87,6 +87,13 @@ func main() {
 }
 ```
 
+### 🧩 Example Output
+
+```
+Found in: doc1
+Found in: doc2
+```
+
 ---
 
 ### Looking Up Words
@@ -102,14 +109,6 @@ Parameters:
 * `exact` — if `true`, only exact word matches are considered. If `false`, a subword matches for the word may be found.
 * `dedup` — if `true`, ensures each primary key is only yielded once (slower, but useful if your backing store is expensive to query).
 
----
-
-## 🧩 Example Output
-
-```
-Found in: doc1
-Found in: doc2
-```
 
 ---
 
@@ -148,12 +147,23 @@ if err := idx.Deserialize(data); err != nil {
 
 ```go
 type NewOpts struct {
-    // FalsePositiveFunctions controls filter accuracy.
-    // Default: 10
-    //
-    // Higher values (10+) → fewer false positives, more memory.
-    // Lower values (0–9) → more false positives, less memory.
-    FalsePositiveFunctions byte
+	// FalsePositiveFunctions tunes the false positive rate of the underlying filters. Default = 3.
+	// Higher values (4+) consume more memory, but cause less false positive problems.
+	// Lower values (0-3) increase the false positive rate, cause more false positive problems.
+	FalsePositiveFunctions byte
+
+	// BucketingExponent affects speed for large-scale indexes.
+	// Higher values are slower to generate the index. Lower values are slower to search.
+	BucketingExponent byte
+
+	// MinShards affects speed of lookup for small tables
+	MinShards byte
+
+	// Shortest length of word that can be searched
+	MinWordLength byte
+
+	// Sync calls getter from one thread only
+	Sync bool
 }
 ```
 
