@@ -50,7 +50,7 @@ type Index struct {
 }
 ```
 
-You can build a new index, serialize/deserialize it, and perform lookups.
+You can build a new index, serialize/deserialize it, append it, and perform lookups.
 
 ---
 
@@ -58,7 +58,7 @@ You can build a new index, serialize/deserialize it, and perform lookups.
 
 ### Creating an Index
 
-Use `New()` to build an index from a set of primary keys and a getter function that provides each record’s `BagOfWords`:
+Use `New()` to build an index from a map of primary keys and their corresponding `BagOfWords`:
 
 ```go
 package main
@@ -68,37 +68,21 @@ import "log"
 import "github.com/neurlang/fulltext"
 
 func main() {
-	opts := &fulltext.NewOpts{
-	    FalsePositiveFunctions: 10, // optional tuning parameter
+	dataMaps := map[string]fulltext.BagOfWords{
+	    "doc1": {"golang": {}, "index": {}, "data": {}},
+	    "doc2": {"search": {}, "engine": {}, "golang": {}},
+	    "doc3": {"text": {}, "filter": {}, "query": {}},
 	}
 
-	primaryKeys := fulltext.BagOfWords{
-	    "doc1": {},
-	    "doc2": {},
-	    "doc3": {},
-	}
-
-	getter := func(pk string) fulltext.BagOfWords {
-	    switch pk {
-	    case "doc1":
-		return fulltext.BagOfWords{"golang": {}, "index": {}, "data": {}}
-	    case "doc2":
-		return fulltext.BagOfWords{"search": {}, "engine": {}, "golang": {}}
-	    case "doc3":
-		return fulltext.BagOfWords{"text": {}, "filter": {}, "query": {}}
-	    }
-	    return nil
-	}
-
-	idx, err := fulltext.New(opts, primaryKeys, getter)
+	idx, err := fulltext.New(nil, dataMaps, nil)
 	if err != nil {
-	    log.Fatal(err)
+		log.Fatal(err)
 	}
 
 	iter := idx.Lookup("golang", true, true)
 
 	for pk := range iter {
-	    fmt.Println("Found in:", pk)
+		fmt.Println("Found in:", pk)
 	}
 }
 ```
