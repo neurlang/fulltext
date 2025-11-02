@@ -271,7 +271,7 @@ func (i *Index) Lookup(word string, exact, dedup bool) func(yield func(primaryKe
 					term := word[t : t+minWord]
 					var bucket int
 					if exact {
-						bucket = len(word) - minWord
+						bucket = t
 					} else {
 						bucket = i.private[current].Maxword - minWord
 					}
@@ -325,7 +325,7 @@ func (i *Index) Lookup(word string, exact, dedup bool) func(yield func(primaryKe
 								var k = string(quaternary.Get(i.private[current].Pk, i.private[current].Pkbits, pos))
 								//println(string(term[:]), k, "yielded")
 								yieldMu.Lock()
-								if !yield(k) {
+								if yielded || !yield(k) {
 									yielded = true
 									yieldMu.Unlock()
 									wg.Done()
@@ -346,7 +346,7 @@ func (i *Index) Lookup(word string, exact, dedup bool) func(yield func(primaryKe
 							var k = string(quaternary.Get(i.private[current].Pk, i.private[current].Pkbits, pos))
 							//println(string(term[:]), k, "yielded")
 							yieldMu.Lock()
-							if !yield(k) {
+							if yielded || !yield(k) {
 								yielded = true
 								yieldMu.Unlock()
 								wg.Done()
