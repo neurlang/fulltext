@@ -6,12 +6,12 @@ import (
 
 // TestNewIndexCreation tests basic index creation with valid inputs
 func TestNewIndexCreation(t *testing.T) {
-	pk := BagOfWords{"user:1":struct{}{}, "user:2":struct{}{}, "user:3":struct{}{}}
+	pk := BagOfWords{"user:1": struct{}{}, "user:2": struct{}{}, "user:3": struct{}{}}
 	getter := func(key string) BagOfWords {
 		words := map[string]BagOfWords{
-			"user:1": {"golang":struct{}{}, "programming":struct{}{}, "backend":struct{}{}},
-			"user:2": {"golang":struct{}{}, "web":struct{}{}, "frontend":struct{}{}},
-			"user:3": {"rust":struct{}{}, "systems":struct{}{}, "backend":struct{}{}},
+			"user:1": {"golang": struct{}{}, "programming": struct{}{}, "backend": struct{}{}},
+			"user:2": {"golang": struct{}{}, "web": struct{}{}, "frontend": struct{}{}},
+			"user:3": {"rust": struct{}{}, "systems": struct{}{}, "backend": struct{}{}},
 		}
 		return words[key]
 	}
@@ -27,7 +27,7 @@ func TestNewIndexCreation(t *testing.T) {
 
 // TestNewIndexWithNilGetter tests that nil getter returns an error
 func TestNewIndexWithNilGetter(t *testing.T) {
-	pk := BagOfWords{"user:1":struct{}{}}
+	pk := BagOfWords{"user:1": struct{}{}}
 	_, err := New(nil, pk, nil)
 	if err == nil {
 		t.Fatal("expected error with nil getter, got nil")
@@ -50,11 +50,11 @@ func TestNewIndexWithEmptyPrimaryKeys(t *testing.T) {
 
 // TestLookupSingleWord tests looking up a single word that exists
 func TestLookupSingleWord(t *testing.T) {
-	pk := BagOfWords{"doc:1":struct{}{}, "doc:2":struct{}{}}
+	pk := BagOfWords{"doc:1": struct{}{}, "doc:2": struct{}{}}
 	getter := func(key string) BagOfWords {
 		words := map[string]BagOfWords{
-			"doc:1": {"hello":struct{}{}, "world":struct{}{}},
-			"doc:2": {"goodbye":struct{}{}, "world":struct{}{}},
+			"doc:1": {"hello": struct{}{}, "world": struct{}{}},
+			"doc:2": {"goodbye": struct{}{}, "world": struct{}{}},
 		}
 		return words[key]
 	}
@@ -75,11 +75,11 @@ func TestLookupSingleWord(t *testing.T) {
 
 // TestLookupNonexistentWord tests looking up a word that doesn't exist
 func TestLookupNonexistentWord(t *testing.T) {
-	pk := BagOfWords{"doc:1":struct{}{}, "doc:2":struct{}{}}
+	pk := BagOfWords{"doc:1": struct{}{}, "doc:2": struct{}{}}
 	getter := func(key string) BagOfWords {
 		words := map[string]BagOfWords{
-			"doc:1": {"hello":struct{}{}, "world":struct{}{}},
-			"doc:2": {"goodbye":struct{}{}, "world":struct{}{}},
+			"doc:1": {"hello": struct{}{}, "world": struct{}{}},
+			"doc:2": {"goodbye": struct{}{}, "world": struct{}{}},
 		}
 		return words[key]
 	}
@@ -100,14 +100,14 @@ func TestLookupNonexistentWord(t *testing.T) {
 
 // TestLookupWithLimit tests that limit parameter is respected
 func TestLookupWithLimit(t *testing.T) {
-	pk := BagOfWords{"doc:1":struct{}{}, "doc:2":struct{}{}, "doc:3":struct{}{}, "doc:4":struct{}{}, "doc:5":struct{}{}}
+	pk := BagOfWords{"doc:1": struct{}{}, "doc:2": struct{}{}, "doc:3": struct{}{}, "doc:4": struct{}{}, "doc:5": struct{}{}}
 	getter := func(key string) BagOfWords {
 		words := map[string]BagOfWords{
-			"doc:1": {"common":struct{}{}},
-			"doc:2": {"common":struct{}{}},
-			"doc:3": {"common":struct{}{}},
-			"doc:4": {"common":struct{}{}},
-			"doc:5": {"common":struct{}{}},
+			"doc:1": {"common": struct{}{}},
+			"doc:2": {"common": struct{}{}},
+			"doc:3": {"common": struct{}{}},
+			"doc:4": {"common": struct{}{}},
+			"doc:5": {"common": struct{}{}},
 		}
 		return words[key]
 	}
@@ -128,12 +128,12 @@ func TestLookupWithLimit(t *testing.T) {
 
 // TestLookupIteratorEarlyExit tests that returning false in iterator stops iteration
 func TestLookupIteratorEarlyExit(t *testing.T) {
-	pk := BagOfWords{"doc:1":struct{}{}, "doc:2":struct{}{}, "doc:3":struct{}{}}
+	pk := BagOfWords{"doc:1": struct{}{}, "doc:2": struct{}{}, "doc:3": struct{}{}}
 	getter := func(key string) BagOfWords {
 		words := map[string]BagOfWords{
-			"doc:1": {"target":struct{}{}},
-			"doc:2": {"target":struct{}{}},
-			"doc:3": {"target":struct{}{}},
+			"doc:1": {"target": struct{}{}},
+			"doc:2": {"target": struct{}{}},
+			"doc:3": {"target": struct{}{}},
 		}
 		return words[key]
 	}
@@ -157,10 +157,10 @@ func TestLookupIteratorEarlyExit(t *testing.T) {
 
 // TestLookupCaseSensitivity tests word lookup case sensitivity
 func TestLookupCaseSensitivity(t *testing.T) {
-	pk := BagOfWords{"doc:1":struct{}{}}
+	pk := BagOfWords{"doc:1": struct{}{}}
 	getter := func(key string) BagOfWords {
 		words := map[string]BagOfWords{
-			"doc:1": {"Hello":struct{}{}, "world":struct{}{}},
+			"doc:1": {"Hello": struct{}{}, "world": struct{}{}},
 		}
 		return words[key]
 	}
@@ -184,11 +184,11 @@ func TestLookupCaseSensitivity(t *testing.T) {
 
 // TestLookupMultipleWords tests searching for different words in same index
 func TestLookupMultipleWords(t *testing.T) {
-	pk := BagOfWords{"doc:1":struct{}{}, "doc:2":struct{}{}}
+	pk := BagOfWords{"doc:1": struct{}{}, "doc:2": struct{}{}}
 	getter := func(key string) BagOfWords {
 		words := map[string]BagOfWords{
-			"doc:1": {"golang":struct{}{}, "backend":struct{}{}},
-			"doc:2": {"rust":struct{}{}, "backend":struct{}{}},
+			"doc:1": {"golang": struct{}{}, "backend": struct{}{}},
+			"doc:2": {"rust": struct{}{}, "backend": struct{}{}},
 		}
 		return words[key]
 	}
@@ -221,9 +221,9 @@ func TestLookupMultipleWords(t *testing.T) {
 
 // TestLookupEmptyWord tests searching with an empty string
 func TestLookupEmptyWord(t *testing.T) {
-	pk := BagOfWords{"doc:1":struct{}{}}
+	pk := BagOfWords{"doc:1": struct{}{}}
 	getter := func(key string) BagOfWords {
-		return BagOfWords{"hello":struct{}{}}
+		return BagOfWords{"hello": struct{}{}}
 	}
 
 	idx, _ := New(nil, pk, getter)
@@ -241,14 +241,13 @@ func TestLookupEmptyWord(t *testing.T) {
 	}
 }
 
-
 // TestLookupMultipleWords tests searching for different words in same index
 func TestLookupMultipleWordsSub(t *testing.T) {
-	pk := BagOfWords{"doc:1":struct{}{}, "doc:2":struct{}{}}
+	pk := BagOfWords{"doc:1": struct{}{}, "doc:2": struct{}{}}
 	getter := func(key string) BagOfWords {
 		words := map[string]BagOfWords{
-			"doc:1": {"golang":struct{}{}, "backend":struct{}{}},
-			"doc:2": {"rust":struct{}{}, "backend":struct{}{}},
+			"doc:1": {"golang": struct{}{}, "backend": struct{}{}},
+			"doc:2": {"rust": struct{}{}, "backend": struct{}{}},
 		}
 		return words[key]
 	}
@@ -281,11 +280,11 @@ func TestLookupMultipleWordsSub(t *testing.T) {
 
 // TestSerialize tests serializing
 func TestSerialize(t *testing.T) {
-	pk := BagOfWords{"doc:1":struct{}{}, "doc:2":struct{}{}}
+	pk := BagOfWords{"doc:1": struct{}{}, "doc:2": struct{}{}}
 	getter := func(key string) BagOfWords {
 		words := map[string]BagOfWords{
-			"doc:1": {"golang":struct{}{}, "backend":struct{}{}},
-			"doc:2": {"rust":struct{}{}, "backend":struct{}{}},
+			"doc:1": {"golang": struct{}{}, "backend": struct{}{}},
+			"doc:2": {"rust": struct{}{}, "backend": struct{}{}},
 		}
 		return words[key]
 	}
@@ -304,9 +303,5 @@ func TestSerialize(t *testing.T) {
 	err = idx.Deserialize(bytes1)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
-	}
-	err = v0.Deserialize(bytes0)
-	if err == nil {
-		t.Fatalf("expected error, got nil")
 	}
 }

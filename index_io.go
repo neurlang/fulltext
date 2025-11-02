@@ -16,8 +16,10 @@ func (idx *Index) Deserialize(data []byte) error {
 	if err != nil {
 		return err
 	}
-	if idx.private.Version != 1 {
-		return ErrFormatVersionMismatch
+	for _, p := range idx.private {
+		if p.Version != 1 {
+			return ErrFormatVersionMismatch
+		}
 	}
 	return nil
 }
