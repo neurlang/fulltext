@@ -34,6 +34,9 @@ type NewOpts struct {
 	// Higher values are slower to generate the index. Lower values are slower to search.
 	BucketingExponent byte
 
+	// MinShards affects speed of lookup for small tables
+	MinShards byte
+
 	// Shortest length of word that can be searched
 	MinWordLength byte
 
@@ -61,7 +64,11 @@ func New[V struct{} | BagOfWords | []string](opts *NewOpts, data map[string]V, g
 			BucketingExponent:      13,
 			MinWordLength:          3,
 			Sync:                   true,
+			MinShards:              4,
 		}
+	}
+	for opts.BucketingExponent > 0 && (len(data)>>opts.BucketingExponent) < int(opts.MinShards) {
+		opts.BucketingExponent--
 	}
 	if getter == nil {
 		vType := reflect.TypeOf(data[""])
@@ -179,10 +186,10 @@ func New[V struct{} | BagOfWords | []string](opts *NewOpts, data map[string]V, g
 		i.private[last].Buckets[0] = quaternary.New(initialBag, i.private[last].Logrows, 0)
 		i.private[last].Counts[0] = quaternary.New(countBag, i.private[last].Logrows, opts.FalsePositiveFunctions)
 	}
+	wg.Wait()
 	i.private = i.private[:last+1]
 	countBag = nil
 	initialBag = nil
-	wg.Wait()
 	var more bool
 	for curr := range i.private {
 		if len(i.private[curr].Buckets) >= 0 {
@@ -231,93 +238,128 @@ func New[V struct{} | BagOfWords | []string](opts *NewOpts, data map[string]V, g
 // Iterator can (in rare cases) have false positives.
 func (i *Index) Lookup(word string, exact, dedup bool) func(yield func(primaryKey string) bool) {
 	return func(yield func(string) bool) {
-		for current := range i.private {
+		var wg sync.WaitGroup
+		var yielded bool
+		var yieldMu sync.RWMutex
+		for curr := range i.private {
 			var minWord int
-			if i.private[current].Version <= 1 {
+			if i.private[curr].Version <= 1 {
 				minWord = 3
 			} else {
-				minWord = int(i.private[current].MinWord)
+				minWord = int(i.private[curr].MinWord)
 			}
 			if len(word) < minWord {
 				continue
 			}
-			if i.private[current].Rows == 0 {
+			if i.private[curr].Rows == 0 {
 				continue
 			}
-			var uniq map[uint64]int
-			if dedup {
-				uniq = make(map[uint64]int)
+			yieldMu.RLock()
+			if yielded {
+				yieldMu.RUnlock()
+				break
+			} else {
+				yieldMu.RUnlock()
 			}
-			for t := len(word) - minWord; t >= 0; t-- {
-				term := word[t : t+minWord]
-				var bucket int
-				if exact {
-					bucket = len(word) - minWord
-				} else {
-					bucket = i.private[current].Maxword - minWord
+			wg.Add(1)
+			go func(current, minWord int) {
+				var uniq map[uint64]int
+				if dedup {
+					uniq = make(map[uint64]int)
 				}
-				for ; bucket >= 0; bucket-- {
-					if bucket >= len(i.private[current].Buckets) {
-						continue
-					}
-					var count uint64
-					if i.private[current].Version <= 1 {
-						if len(i.private[current].Buckets[bucket]) < 2 {
-							continue
-						}
-						count = quaternary.GetNum(i.private[current].Buckets[bucket], uint64(i.private[current].Logrows), term+"0")
+				for t := len(word) - minWord; t >= 0; t-- {
+					term := word[t : t+minWord]
+					var bucket int
+					if exact {
+						bucket = len(word) - minWord
 					} else {
-						if len(i.private[current].Counts[bucket]) < 2 {
+						bucket = i.private[current].Maxword - minWord
+					}
+					for ; bucket >= 0; bucket-- {
+						if bucket >= len(i.private[current].Buckets) {
 							continue
 						}
-						count = quaternary.GetNum(i.private[current].Counts[bucket], uint64(i.private[current].Logrows), term)
-					}
-					//println("Lookup:", string(term[:]) + "0", count)
-					if count == 0 {
-						continue
-					}
-					if count > i.private[current].Rows {
-						continue
-					}
-					//println(word, count, "results")
-					for c := uint64(1); c <= count; c++ {
-						pos := quaternary.GetNum(i.private[current].Buckets[bucket], uint64(i.private[current].Logrows), term+fmt.Sprint(c))
-						//println("Lookup:", string(term[:]) + fmt.Sprint(c), pos)
-						if pos == 0 {
-							//println("pos == 0")
-							continue
-						}
-						if pos > i.private[current].Rows {
-							//println("pos > rows")
-							continue
-						}
-						if dedup {
-							uniq[pos]++
+						yieldMu.RLock()
+						if yielded {
+							yieldMu.RUnlock()
+							wg.Done()
+							return
 						} else {
-							//println(word, pos, "result")
+							yieldMu.RUnlock()
+						}
+						var count uint64
+						if i.private[current].Version <= 1 {
+							if len(i.private[current].Buckets[bucket]) < 2 {
+								continue
+							}
+							count = quaternary.GetNum(i.private[current].Buckets[bucket], uint64(i.private[current].Logrows), term+"0")
+						} else {
+							if len(i.private[current].Counts[bucket]) < 2 {
+								continue
+							}
+							count = quaternary.GetNum(i.private[current].Counts[bucket], uint64(i.private[current].Logrows), term)
+						}
+						//println("Lookup:", string(term[:]) + "0", count)
+						if count == 0 {
+							continue
+						}
+						if count > i.private[current].Rows {
+							continue
+						}
+						//println(word, count, "results")
+						for c := uint64(1); c <= count; c++ {
+							pos := quaternary.GetNum(i.private[current].Buckets[bucket], uint64(i.private[current].Logrows), term+fmt.Sprint(c))
+							//println("Lookup:", string(term[:]) + fmt.Sprint(c), pos)
+							if pos == 0 {
+								//println("pos == 0")
+								continue
+							}
+							if pos > i.private[current].Rows {
+								//println("pos > rows")
+								continue
+							}
+							if dedup {
+								uniq[pos]++
+							} else {
+								//println(word, pos, "result")
+								var k = string(quaternary.Get(i.private[current].Pk, i.private[current].Pkbits, pos))
+								//println(string(term[:]), k, "yielded")
+								yieldMu.Lock()
+								if !yield(k) {
+									yielded = true
+									yieldMu.Unlock()
+									wg.Done()
+									return
+								} else {
+									yieldMu.Unlock()
+								}
+							}
+						}
+						if exact {
+							break
+						}
+					}
+				}
+				if dedup {
+					for pos, v := range uniq {
+						if v+minWord >= len(word) {
 							var k = string(quaternary.Get(i.private[current].Pk, i.private[current].Pkbits, pos))
 							//println(string(term[:]), k, "yielded")
+							yieldMu.Lock()
 							if !yield(k) {
+								yielded = true
+								yieldMu.Unlock()
+								wg.Done()
 								return
+							} else {
+								yieldMu.Unlock()
 							}
 						}
 					}
-					if exact {
-						break
-					}
 				}
-			}
-			if dedup {
-				for pos, v := range uniq {
-					if v+minWord >= len(word) {
-						var k = string(quaternary.Get(i.private[current].Pk, i.private[current].Pkbits, pos))
-						//println(string(term[:]), k, "yielded")
-						if !yield(k) {
-							return
-						}
-					}
-				}
-			}
+				wg.Done()
+			}(curr, minWord)
 		}
+		wg.Wait()
 	}
 }
