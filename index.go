@@ -24,6 +24,16 @@ type Index struct {
 	private []index
 }
 
+func NewDefaultOpts() *NewOpts {
+	return &NewOpts{
+		FalsePositiveFunctions: 3,
+		BucketingExponent:      13,
+		MinWordLength:          3,
+		Sync:                   true,
+		MinShards:              3,
+	}
+}
+
 type NewOpts struct {
 	// FalsePositiveFunctions tunes the false positive rate of the underlying filters. Default = 10.
 	// Higher values (10+) consume more memory, but cause less false positive problems.
@@ -42,6 +52,9 @@ type NewOpts struct {
 
 	// Sync calls getter from one thread only
 	Sync bool
+
+	// detect badly configured opts
+	configured bool
 }
 
 var ErrNonuniform = fmt.Errorf("nonuniform_key_size")
@@ -57,15 +70,9 @@ func (i *Index) Append(j *Index) *Index {
 // Getter iterates the storage based on primary keys and returns the words in the row with primaryKey. Opts can be nil.
 func New[V struct{} | BagOfWords | []string](opts *NewOpts, data map[string]V, getter func(primaryKey string) BagOfWords) (i *Index, err error) {
 	var syncGetter = getter
-	if opts == nil {
+	if opts == nil || opts.configured == false {
 		// defaults
-		opts = &NewOpts{
-			FalsePositiveFunctions: 2,
-			BucketingExponent:      13,
-			MinWordLength:          3,
-			Sync:                   true,
-			MinShards:              3,
-		}
+		opts = NewDefaultOpts()
 	}
 	for opts.BucketingExponent > 0 && (len(data)>>opts.BucketingExponent) < int(opts.MinShards) {
 		opts.BucketingExponent--
