@@ -4,6 +4,7 @@ package fulltext
 import quaternary "github.com/neurlang/quaternary/v1"
 import "fmt"
 import "reflect"
+import "sync"
 
 type BagOfWords = map[string]struct{}
 
@@ -72,6 +73,7 @@ func New[V struct{} | BagOfWords | []string](opts *NewOpts, data map[string]V, g
 			BucketingExponent:      13,
 		}
 	}
+	var wg sync.WaitGroup
 	i = new(Index)
 	i.private = make([]index, (len(data)>>opts.BucketingExponent)+1, (len(data)>>opts.BucketingExponent)+1)
 	for current := range i.private {
@@ -107,25 +109,29 @@ func New[V struct{} | BagOfWords | []string](opts *NewOpts, data map[string]V, g
 			initialBag[word[:3]+fmt.Sprint(cnt)] = uint64(size)
 		}
 		if (size >> opts.BucketingExponent) != 0 {
-			//println("flush", current)
-			for k, v := range countBag {
-				//println("countBag:", string(k[:])+"0", v)
-				initialBag[string(k[:])+"0"] = v
-			}
-			i.private[current].Rows = uint64(len(ikeys))
-			for j := i.private[current].Rows; j > 0; j >>= 1 {
-				i.private[current].Logrows++
-			}
-			if i.private[current].Rows > 0 {
-				i.private[current].Pkbits = uint64(len(ikeys[1])) * 8
-			}
-			//println(i.private[current].Pkbits)
-			if i.private[current].Pkbits <= 255 {
-				i.private[current].Pk = quaternary.Make(ikeys, byte(i.private[current].Pkbits))
-			} else {
-				i.private[current].Pk = quaternary.Make(ikeys, 0)
-			}
-			i.private[current].Buckets[0] = quaternary.New(initialBag, i.private[current].Logrows, opts.FalsePositiveFunctions)
+			wg.Add(1)
+			go func(ikeys map[int]string, countBag map[[3]byte]uint64, initialBag map[string]uint64, current int) {
+				//println("flush", current)
+				for k, v := range countBag {
+					//println("countBag:", string(k[:])+"0", v)
+					initialBag[string(k[:])+"0"] = v
+				}
+				i.private[current].Rows = uint64(len(ikeys))
+				for j := i.private[current].Rows; j > 0; j >>= 1 {
+					i.private[current].Logrows++
+				}
+				if i.private[current].Rows > 0 {
+					i.private[current].Pkbits = uint64(len(ikeys[1])) * 8
+				}
+				//println(i.private[current].Pkbits)
+				if i.private[current].Pkbits <= 255 {
+					i.private[current].Pk = quaternary.Make(ikeys, byte(i.private[current].Pkbits))
+				} else {
+					i.private[current].Pk = quaternary.Make(ikeys, 0)
+				}
+				i.private[current].Buckets[0] = quaternary.New(initialBag, i.private[current].Logrows, opts.FalsePositiveFunctions)
+				wg.Done()
+			}(ikeys, countBag, initialBag, current)
 			ikeys = make(map[int]string, 1<<opts.BucketingExponent)
 			countBag = make(map[[3]byte]uint64)
 			initialBag = make(map[string]uint64)
@@ -158,6 +164,7 @@ func New[V struct{} | BagOfWords | []string](opts *NewOpts, data map[string]V, g
 	}
 	i.private = i.private[:last+1]
 	initialBag = nil
+	wg.Wait()
 	var more bool
 	for curr := range i.private {
 		if len(i.private[curr].Buckets) >= 0 {
