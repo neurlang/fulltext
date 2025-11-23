@@ -1,6 +1,6 @@
 module github.com/neurlang/fulltext
 
-go 1.24.7
+go 1.18
 
 require github.com/neurlang/quaternary v0.2.4
 
