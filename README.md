@@ -15,7 +15,7 @@ It supports serialization/deserialization to JSON for persistence and efficient 
 * **Similar size:** This does have comparable fulltext index size
 * **More features:** This package also allows prefix searches (such as in autocomplete) or subword searches, means more results for the user.
 * **Simpler:** Light API with generic constructor
-* **The price:** At the cost of somewhat slower indexing/searching
+* **The price:** None. Ours's fully competitive with other libraries
 
 ---
 
