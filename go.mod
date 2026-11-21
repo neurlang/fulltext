@@ -2,7 +2,7 @@ module github.com/neurlang/fulltext
 
 go 1.18
 
-require github.com/neurlang/quaternary v0.2.4
+require github.com/neurlang/quaternary v0.2.6-0.20261121123805-62e1cbaf457b
 
 require (
 	github.com/klauspost/cpuid/v2 v2.2.3 // indirect
